@@ -1,0 +1,26 @@
+[
+    {
+        "id": "sun",
+        "title": "The Sun",
+        "summary": "The Sun is a massive ball of hot plasma at the center of our solar system. It provides light and heat necessary for life on Earth.",
+        "sample_question": "Why is the Sun considered the primary source of energy for the solar system?"
+    },
+    {
+        "id": "planets",
+        "title": "Planets",
+        "summary": "Planets are large celestial bodies orbiting the Sun. They are classified into terrestrial planets and gas giants based on their composition.",
+        "sample_question": "What are the main differences between terrestrial planets and gas giants?"
+    },
+    {
+        "id": "moon",
+        "title": "Earth's Moon",
+        "summary": "The Moon is Earth's only natural satellite. It affects ocean tides and is the only celestial body visited by humans.",
+        "sample_question": "What causes the different phases of the Moon?"
+    },
+    {
+        "id": "asteroids",
+        "title": "Asteroids",
+        "summary": "Asteroids are small rocky bodies that orbit the Sun, mostly found in the asteroid belt between Mars and Jupiter.",
+        "sample_question": "Where is the asteroid belt located and what is found there?"
+    }
+]
