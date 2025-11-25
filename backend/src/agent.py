@@ -1,139 +1,210 @@
 import logging
+import json
+import os
+import asyncio
+from typing import Annotated, Literal, Optional
+from dataclasses import dataclass
 
 from dotenv import load_dotenv
+from pydantic import Field
 from livekit.agents import (
     Agent,
     AgentSession,
     JobContext,
     JobProcess,
-    MetricsCollectedEvent,
     RoomInputOptions,
     WorkerOptions,
     cli,
-    metrics,
-    tokenize,
-    # function_tool,
-    # RunContext
+    function_tool,
+    RunContext,
 )
+
 from livekit.plugins import murf, silero, google, deepgram, noise_cancellation
 from livekit.plugins.turn_detector.multilingual import MultilingualModel
 
 logger = logging.getLogger("agent")
-
 load_dotenv(".env.local")
 
+# ======================================================
+# CONTENT SETUP
+# ======================================================
 
-class Assistant(Agent):
-    def __init__(self) -> None:
+CONTENT_FILE = "solar_system.json"
+
+DEFAULT_CONTENT = [
+    {
+        "id": "sun",
+        "title": "The Sun",
+        "summary": "The Sun is a massive ball of hot plasma at the center of our solar system. It provides light and heat necessary for life on Earth.",
+        "sample_question": "Why is the Sun considered the primary source of energy for the solar system?"
+    },
+    {
+        "id": "planets",
+        "title": "Planets",
+        "summary": "Planets are large celestial bodies orbiting the Sun. They are classified into terrestrial planets and gas giants based on their composition.",
+        "sample_question": "What are the main differences between terrestrial planets and gas giants?"
+    },
+    {
+        "id": "moon",
+        "title": "Earth's Moon",
+        "summary": "The Moon is Earth's only natural satellite. It affects ocean tides and is the only celestial body visited by humans.",
+        "sample_question": "What causes the different phases of the Moon?"
+    },
+    {
+        "id": "asteroids",
+        "title": "Asteroids",
+        "summary": "Asteroids are small rocky bodies that orbit the Sun, mostly found in the asteroid belt between Mars and Jupiter.",
+        "sample_question": "Where is the asteroid belt located and what is found there?"
+    }
+]
+
+def load_content():
+    """Load or create solar system content."""
+    try:
+        path = os.path.join(os.path.dirname(__file__), CONTENT_FILE)
+
+        if not os.path.exists(path):
+            with open(path, "w", encoding="utf-8") as f:
+                json.dump(DEFAULT_CONTENT, f, indent=4)
+
+        with open(path, "r", encoding="utf-8") as f:
+            return json.load(f)
+
+    except Exception:
+        return []
+
+COURSE_CONTENT = load_content()
+
+# ======================================================
+# STATE
+# ======================================================
+
+@dataclass
+class TutorState:
+    current_topic_id: str | None = None
+    current_topic_data: dict | None = None
+    mode: Literal["learn", "quiz", "teach_back"] = "learn"
+
+    def set_topic(self, topic_id: str):
+        topic = next((t for t in COURSE_CONTENT if t["id"] == topic_id), None)
+        if topic:
+            self.current_topic_id = topic_id
+            self.current_topic_data = topic
+            return True
+        return False
+
+@dataclass
+class Userdata:
+    tutor_state: TutorState
+    agent_session: Optional[AgentSession] = None
+
+# ======================================================
+# TOOLS
+# ======================================================
+
+@function_tool
+async def select_topic(
+    ctx: RunContext[Userdata],
+    topic_id: Annotated[str, Field(description="ID of the topic")]
+):
+    state = ctx.userdata.tutor_state
+    ok = state.set_topic(topic_id.lower())
+
+    if ok:
+        return f"Topic set to {state.current_topic_data['title']}. Ask the user whether to Learn, Quiz, or Teach Back."
+    else:
+        available = ", ".join([t["id"] for t in COURSE_CONTENT])
+        return f"Topic not found. Available topics: {available}"
+
+@function_tool
+async def set_learning_mode(
+    ctx: RunContext[Userdata],
+    mode: Annotated[str, Field(description="Mode: learn, quiz, teach_back")]
+):
+    state = ctx.userdata.tutor_state
+    state.mode = mode.lower()
+    session = ctx.userdata.agent_session
+
+    if session:
+        if state.mode == "learn":
+            session.tts.update_options(voice="en-US-matthew", style="Promo")
+            instruction = f"Explain: {state.current_topic_data['summary']}"
+
+        elif state.mode == "quiz":
+            session.tts.update_options(voice="en-US-alicia", style="Conversational")
+            instruction = f"Ask: {state.current_topic_data['sample_question']}"
+
+        elif state.mode == "teach_back":
+            session.tts.update_options(voice="en-US-ken", style="Promo")
+            instruction = "Ask the user to explain the topic back."
+
+        else:
+            return "Invalid mode."
+    else:
+        instruction = "Voice session not found."
+
+    return f"Switched to {state.mode} mode. {instruction}"
+
+@function_tool
+async def evaluate_teaching(
+    ctx: RunContext[Userdata],
+    user_explanation: Annotated[str, Field(description="User's explanation")]
+):
+    return "Analyze the explanation, give a score out of 10, and correct mistakes."
+
+# ======================================================
+# AGENT
+# ======================================================
+
+class TutorAgent(Agent):
+    def __init__(self):
+        topics = ", ".join([f"{t['id']} ({t['title']})" for t in COURSE_CONTENT])
+
         super().__init__(
-            instructions="""You are a helpful voice AI assistant. The user is interacting with you via voice, even if you perceive the conversation as text.
-            You eagerly assist users with their questions by providing information from your extensive knowledge.
-            Your responses are concise, to the point, and without any complex formatting or punctuation including emojis, asterisks, or other symbols.
-            You are curious, friendly, and have a sense of humor.""",
+            instructions=f"""
+            You are a Astrology Tutor.
+
+            Topics: {topics}
+
+            Modes:
+            - Learn: Explain concepts.
+            - Quiz: Ask questions.
+            - Teach Back: User explains; you evaluate.
+            """,
+            tools=[select_topic, set_learning_mode, evaluate_teaching],
         )
 
-    # To add tools, use the @function_tool decorator.
-    # Here's an example that adds a simple weather tool.
-    # You also have to add `from livekit.agents import function_tool, RunContext` to the top of this file
-    # @function_tool
-    # async def lookup_weather(self, context: RunContext, location: str):
-    #     """Use this tool to look up current weather information in the given location.
-    #
-    #     If the location is not supported by the weather service, the tool will indicate this. You must tell the user the location's weather is unavailable.
-    #
-    #     Args:
-    #         location: The location to look up weather information for (e.g. city name)
-    #     """
-    #
-    #     logger.info(f"Looking up weather for {location}")
-    #
-    #     return "sunny with a temperature of 70 degrees."
-
+# ======================================================
+# ENTRYPOINT
+# ======================================================
 
 def prewarm(proc: JobProcess):
     proc.userdata["vad"] = silero.VAD.load()
 
-
 async def entrypoint(ctx: JobContext):
-    # Logging setup
-    # Add any other context you want in all log entries here
-    ctx.log_context_fields = {
-        "room": ctx.room.name,
-    }
+    userdata = Userdata(tutor_state=TutorState())
 
-    # Set up a voice AI pipeline using OpenAI, Cartesia, AssemblyAI, and the LiveKit turn detector
     session = AgentSession(
-        # Speech-to-text (STT) is your agent's ears, turning the user's speech into text that the LLM can understand
-        # See all available models at https://docs.livekit.io/agents/models/stt/
         stt=deepgram.STT(model="nova-3"),
-        # A Large Language Model (LLM) is your agent's brain, processing user input and generating a response
-        # See all available models at https://docs.livekit.io/agents/models/llm/
-        llm=google.LLM(
-                model="gemini-2.5-flash",
-            ),
-        # Text-to-speech (TTS) is your agent's voice, turning the LLM's text into speech that the user can hear
-        # See all available models as well as voice selections at https://docs.livekit.io/agents/models/tts/
-        tts=murf.TTS(
-                voice="en-US-matthew", 
-                style="Conversation",
-                tokenizer=tokenize.basic.SentenceTokenizer(min_sentence_len=2),
-                text_pacing=True
-            ),
-        # VAD and turn detection are used to determine when the user is speaking and when the agent should respond
-        # See more at https://docs.livekit.io/agents/build/turns
+        llm=google.LLM(model="gemini-2.5-flash"),
+        tts=murf.TTS(voice="en-US-matthew", style="Promo", text_pacing=True),
         turn_detection=MultilingualModel(),
         vad=ctx.proc.userdata["vad"],
-        # allow the LLM to generate a response while waiting for the end of turn
-        # See more at https://docs.livekit.io/agents/build/audio/#preemptive-generation
-        preemptive_generation=True,
+        userdata=userdata,
     )
 
-    # To use a realtime model instead of a voice pipeline, use the following session setup instead.
-    # (Note: This is for the OpenAI Realtime API. For other providers, see https://docs.livekit.io/agents/models/realtime/))
-    # 1. Install livekit-agents[openai]
-    # 2. Set OPENAI_API_KEY in .env.local
-    # 3. Add `from livekit.plugins import openai` to the top of this file
-    # 4. Use the following session setup instead of the version above
-    # session = AgentSession(
-    #     llm=openai.realtime.RealtimeModel(voice="marin")
-    # )
+    userdata.agent_session = session
 
-    # Metrics collection, to measure pipeline performance
-    # For more information, see https://docs.livekit.io/agents/build/metrics/
-    usage_collector = metrics.UsageCollector()
-
-    @session.on("metrics_collected")
-    def _on_metrics_collected(ev: MetricsCollectedEvent):
-        metrics.log_metrics(ev.metrics)
-        usage_collector.collect(ev.metrics)
-
-    async def log_usage():
-        summary = usage_collector.get_summary()
-        logger.info(f"Usage: {summary}")
-
-    ctx.add_shutdown_callback(log_usage)
-
-    # # Add a virtual avatar to the session, if desired
-    # # For other providers, see https://docs.livekit.io/agents/models/avatar/
-    # avatar = hedra.AvatarSession(
-    #   avatar_id="...",  # See https://docs.livekit.io/agents/models/avatar/plugins/hedra
-    # )
-    # # Start the avatar and wait for it to join
-    # await avatar.start(session, room=ctx.room)
-
-    # Start the session, which initializes the voice pipeline and warms up the models
     await session.start(
-        agent=Assistant(),
+        agent=TutorAgent(),
         room=ctx.room,
         room_input_options=RoomInputOptions(
-            # For telephony applications, use `BVCTelephony` for best results
-            noise_cancellation=noise_cancellation.BVC(),
+            noise_cancellation=noise_cancellation.BVC()
         ),
     )
 
-    # Join the room and connect to the user
     await ctx.connect()
-
 
 if __name__ == "__main__":
     cli.run_app(WorkerOptions(entrypoint_fnc=entrypoint, prewarm_fnc=prewarm))
+
