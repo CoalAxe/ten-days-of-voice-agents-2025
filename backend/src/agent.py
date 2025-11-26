@@ -47,15 +47,15 @@ LEADS_FILE = "lead_db.json"
 DEFAULT_FAQ = [
     {
         "question": "What do you offer?",
-        "answer": "Murf AI is an advanced AI platform that allows you to create natural-sounding voiceovers, build voice agents, and integrate speech technology into your applications with ease."
+        "answer": "As part of Infosys, we offer a wide range of technology and consulting solutions designed to help businesses scale efficiently and adopt modern AI-driven workflows."
     },
     {
         "question": "How much do your courses cost?",
-        "answer": "Murf AI offers a free tier for experimenting with voice agents and voiceovers, with paid plans available for higher usage, premium voices, and advanced features."
+        "answer": "If you want a rough market comparison: In India, similar tech/AI/IT-training courses often cost anywhere between ₹40,000 to ₹1,60,000 (for comprehensive courses) depending on content and duration."
     },
     {
         "question": "Do you offer free content?",
-        "answer": "Yes, we provide some free tutorials and learning materials."
+        "answer": "As part of Infosys, yes — we do offer several forms of free learning content and upskilling resources, especially for students, developers, and tech professionals."
     },
     {
         "question": "Do you provide consulting?",
