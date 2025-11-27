@@ -1,0 +1,24 @@
+[
+    {
+        "userName": "Rohit",
+        "securityIdentifier": "78652",
+        "cardEnding": "5521",
+        "transactionName": "Metro Electronics",
+        "transactionAmount": "$320.00",
+        "transactionTime": "10:45 AM IST",
+        "transactionSource": "flipkart.com",
+        "case_status": "confirmed_safe",
+        "notes": "User confirmed the transaction, but stated it was not a usual purchase pattern."
+    },
+    {
+        "userName": "Sarah",
+        "securityIdentifier": "883098",
+        "cardEnding": "1986",
+        "transactionName": "Unknown Crypto Exchange",
+        "transactionAmount": "$25,500.00",
+        "transactionTime": "5:30 AM PST",
+        "transactionSource": "online_transfer",
+        "case_status": "confirmed_safe",
+        "notes": "User confirmed the $25,500.00 transaction at Unknown Crypto Exchange."
+    }
+]
